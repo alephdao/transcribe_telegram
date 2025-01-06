@@ -7,21 +7,62 @@ from dotenv import load_dotenv
 import logging
 from telegram import Update
 import base64
+import boto3
+from botocore.exceptions import ClientError
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Load environment variables
-load_dotenv()
-BOT_TOKEN = os.getenv("galebach_transcriber_bot_token")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+def get_aws_parameter(parameter_name):
+    """
+    Retrieve a parameter from AWS Parameter Store
+    Returns None if not running on EC2 or parameter not found
+    """
+    try:
+        # Try to create SSM client - will fail fast if no AWS credentials
+        try:
+            ssm = boto3.client('ssm', region_name='us-east-1')
+        except:
+            logger.info("No AWS credentials found - skipping Parameter Store")
+            return None
+            
+        # Try to get parameter
+        response = ssm.get_parameter(Name=parameter_name, WithDecryption=True)
+        return response['Parameter']['Value']
+        
+    except Exception as e:
+        logger.info(f"Could not retrieve parameter from AWS: {e}")
+        return None
 
-if not BOT_TOKEN or not GOOGLE_API_KEY:
-    raise ValueError("Missing required environment variables")
+def get_credentials():
+    """
+    Get credentials from either AWS Parameter Store or environment variables
+    Returns tuple of (bot_token, google_ai_api_key)
+    """
+    # Try AWS Parameter Store first
+    bot_token = get_aws_parameter('galebach_transcriber_bot_token')
+    google_ai_api_key = get_aws_parameter('GOOGLE_AI_API_KEY')
+    
+    # Fall back to environment variables if AWS params not available
+    if not bot_token or not google_ai_api_key:
+        logger.info("Using environment variables for credentials")
+        load_dotenv()
+        bot_token = os.getenv("galebach_transcriber_bot_token")
+        google_ai_api_key = os.getenv("GOOGLE_AI_API_KEY")
+    else:
+        logger.info("Using AWS Parameter Store for credentials")
+
+    if not bot_token or not google_ai_api_key:
+        raise ValueError("Missing required credentials from both AWS and environment variables")
+        
+    return bot_token, google_ai_api_key
+
+# Replace the credential loading section with the new method
+BOT_TOKEN, GOOGLE_AI_API_KEY = get_credentials()
 
 # Initialize Gemini
-genai.configure(api_key=GOOGLE_API_KEY)
+genai.configure(api_key=GOOGLE_AI_API_KEY)
 model = genai.GenerativeModel('models/gemini-2.0-flash-exp')
 
 TRANSCRIPTION_PROMPT = """Please transcribe this audio accurately in its original language. 
