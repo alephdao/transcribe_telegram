@@ -9,6 +9,8 @@ from telegram import Update
 import base64
 import boto3
 from botocore.exceptions import ClientError
+from io import BytesIO
+import math
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -82,6 +84,25 @@ SUPPORTED_AUDIO_TYPES = {
     'audio/x-aac',       # alternative aac
 }
 
+# Add constant
+MAX_CHUNK_SIZE = 20 * 1024 * 1024  # 20MB in bytes
+
+async def chunk_audio_data(audio_data):
+    """
+    Split audio data into 20MB chunks
+    Returns list of BytesIO objects containing chunks
+    """
+    total_size = len(audio_data)
+    num_chunks = math.ceil(total_size / MAX_CHUNK_SIZE)
+    chunks = []
+    
+    for i in range(num_chunks):
+        start = i * MAX_CHUNK_SIZE
+        end = min(start + MAX_CHUNK_SIZE, total_size)
+        chunk = BytesIO(audio_data[start:end])
+        chunks.append(chunk)
+    
+    return chunks
 
 async def transcribe_audio(audio_data):
     """
@@ -167,14 +188,6 @@ async def handle_audio(update, context):
     Handle incoming audio files and voice messages.
     """
     try:
-        # Check if audio format is supported
-        if update.message.audio and update.message.audio.mime_type not in SUPPORTED_AUDIO_TYPES:
-            await update.message.reply_text(
-                f"Sorry, the format {update.message.audio.mime_type} is not supported. "
-                "Please send a common audio format like MP3, WAV, OGG, or M4A."
-            )
-            return
-        
         # Get the audio file
         audio_file = update.message.voice or update.message.audio
         file_type = "voice message" if update.message.voice else f"audio file ({update.message.audio.mime_type})"
@@ -185,13 +198,34 @@ async def handle_audio(update, context):
         )
         
         try:
-            # Download and transcribe the audio
+            # Download the audio
             logger.info("Downloading audio file")
             audio_data = await download_file(audio_file)
             logger.info(f"Downloaded audio file, size: {len(audio_data)} bytes")
             
-            logger.info("Starting transcription")
-            transcript = await transcribe_audio(audio_data)
+            # Process in chunks if file is large
+            if len(audio_data) > MAX_CHUNK_SIZE:
+                logger.info("File exceeds 20MB, processing in chunks")
+                chunks = await chunk_audio_data(audio_data)
+                
+                # Process each chunk and combine transcripts
+                full_transcript = []
+                for i, chunk in enumerate(chunks, 1):
+                    await processing_msg.edit_text(
+                        f"Processing chunk {i} of {len(chunks)}... Please wait."
+                    )
+                    chunk_transcript = await transcribe_audio(chunk.getvalue())
+                    # Remove the "# Transcription" header from subsequent chunks
+                    if i > 1:
+                        chunk_transcript = chunk_transcript.replace("# Transcription\n\n", "")
+                    full_transcript.append(chunk_transcript)
+                
+                transcript = "\n\n".join(full_transcript)
+            else:
+                # Process normally if file is small
+                logger.info("Starting transcription")
+                transcript = await transcribe_audio(audio_data)
+            
             logger.info("Transcription completed")
             
             # Delete the processing message

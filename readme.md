@@ -3,4 +3,4 @@ next steps
 - clone to aws ec2
 - run it and keep running for now...
 
-it took X minutes to do the above and have it running on my EC2. 
+it took 3 minutes to do the above and 5 minutes to set up the .env files. Easy!
