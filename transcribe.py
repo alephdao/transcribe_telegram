@@ -85,7 +85,7 @@ SUPPORTED_AUDIO_TYPES = {
 }
 
 # Add constant
-MAX_CHUNK_SIZE = 20 * 1024 * 1024  # 20MB in bytes
+MAX_CHUNK_SIZE = 19 * 1024 * 1024  # 20MB in bytes
 
 async def chunk_audio_data(audio_data):
     """
