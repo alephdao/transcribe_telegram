@@ -14,47 +14,68 @@ from botocore.exceptions import ClientError
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def get_deployment_mode():
+    """
+    Get deployment mode from AWS Parameter Store or default to local
+    Returns: str - 'aws' or 'local'
+    """
+    try:
+        # First check if we can access AWS Parameter Store
+        ssm = boto3.client('ssm', region_name='us-east-1')
+        response = ssm.get_parameter(
+            Name='transcribe_telegram_deployment_mode',
+            WithDecryption=False
+        )
+        mode = response['Parameter']['Value'].lower()
+        logger.info(f"Found deployment mode in AWS: {mode}")
+        return mode
+    except Exception as e:
+        logger.info(f"Defaulting to local mode: {e}")
+        return 'local'
+    
+DEPLOYMENT_MODE = get_deployment_mode()
+
+
 def get_aws_parameter(parameter_name):
     """
     Retrieve a parameter from AWS Parameter Store
-    Returns None if not running on EC2 or parameter not found
+    Only attempts if running in AWS mode
     """
+    if DEPLOYMENT_MODE != 'aws':
+        return None
+        
     try:
-        # Try to create SSM client - will fail fast if no AWS credentials
-        try:
-            ssm = boto3.client('ssm', region_name='us-east-1')
-        except:
-            logger.info("No AWS credentials found - skipping Parameter Store")
-            return None
-            
-        # Try to get parameter
+        ssm = boto3.client('ssm', region_name='us-east-1')
         response = ssm.get_parameter(Name=parameter_name, WithDecryption=True)
         return response['Parameter']['Value']
-        
     except Exception as e:
         logger.info(f"Could not retrieve parameter from AWS: {e}")
         return None
 
 def get_credentials():
     """
-    Get credentials from either AWS Parameter Store or environment variables
+    Get credentials based on deployment mode
     Returns tuple of (bot_token, google_ai_api_key)
     """
-    # Try AWS Parameter Store first
-    bot_token = get_aws_parameter('galebach_transcriber_bot_token')
-    google_ai_api_key = get_aws_parameter('GOOGLE_AI_API_KEY')
-    
-    # Fall back to environment variables if AWS params not available
-    if not bot_token or not google_ai_api_key:
-        logger.info("Using environment variables for credentials")
+    if DEPLOYMENT_MODE == 'aws':
+        logger.info("Running in AWS mode - checking Parameter Store")
+        bot_token = get_aws_parameter('galebach_transcriber_bot_token')
+        google_ai_api_key = get_aws_parameter('GOOGLE_AI_API_KEY')
+        
+        # Fall back to env vars if AWS params fail
+        if not bot_token or not google_ai_api_key:
+            logger.warning("AWS Parameter Store failed - falling back to environment variables")
+            load_dotenv()
+            bot_token = os.getenv("galebach_transcriber_bot_token")
+            google_ai_api_key = os.getenv("GOOGLE_AI_API_KEY")
+    else:
+        logger.info("Running in local mode - using environment variables")
         load_dotenv()
         bot_token = os.getenv("galebach_transcriber_bot_token")
         google_ai_api_key = os.getenv("GOOGLE_AI_API_KEY")
-    else:
-        logger.info("Using AWS Parameter Store for credentials")
 
     if not bot_token or not google_ai_api_key:
-        raise ValueError("Missing required credentials from both AWS and environment variables")
+        raise ValueError("Missing required credentials")
         
     return bot_token, google_ai_api_key
 

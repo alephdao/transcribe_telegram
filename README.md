@@ -35,11 +35,18 @@ cd transcribe_telegram
 pip install -r requirements.txt
 ```
 
-3. Configure environment variables:
+3. Create a Telegram bot
+
+- Open Telegram and search for "BotFather"
+- Send "/newbot" to BotFather
+- Follow the prompts to name your bot
+- BotFather will give you an API token - save this securely
+
+4. Configure environment variables:
 Create a `.env` file with the following variables:
 - `TELEGRAM_BOT_TOKEN`: Your Telegram bot token
 - `GOOGLE_API_KEY`: Google AI API key
--  `AWS_ACCESS_KEY_ID`: AWS access key (OPTIONAL: if hosting on AWS)
+- `AWS_ACCESS_KEY_ID`: AWS access key (OPTIONAL: if hosting on AWS)
 - `AWS_SECRET_ACCESS_KEY`: AWS secret key (OPTIONAL: if hosting on AWS)
 
 ## Usage
