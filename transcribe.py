@@ -205,7 +205,7 @@ async def handle_audio(update, context):
             error_message = (
                 "Sorry, there was an error processing your audio file.\n"
                 f"Error: {str(e)}\n\n"
-                "Please try again or contact support if the issue persists."
+                "Note: telegram bots have a 20MB file limit. telegram API allows 2GB."
             )
             await processing_msg.edit_text(error_message)
             

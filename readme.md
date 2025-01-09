@@ -4,10 +4,16 @@ A Telegram bot that transcribes voice messages and audio files using AWS service
 
 ## Features
 
-- Transcribes voice messages and audio files sent to the bot
+- Transcribes voice messages and audio files sent to the bot in their original language. Eg, English audio returns English and Spanish audio returns Spanish. 
 - Supports Telegram's native audio formats
 - Uses AWS services for processing
 - Integrates with Google's Generative AI for enhanced transcription
+- Places speakers names next to the audio
+
+## Future Features
+- better formatting of the transcript
+- ability to specify the output language
+- ability to kickoff a cleaning step of the transcript like formatting it as an email. 
 
 ## Prerequisites
 
@@ -32,9 +38,9 @@ pip install -r requirements.txt
 3. Configure environment variables:
 Create a `.env` file with the following variables:
 - `TELEGRAM_BOT_TOKEN`: Your Telegram bot token
-- `AWS_ACCESS_KEY_ID`: AWS access key
-- `AWS_SECRET_ACCESS_KEY`: AWS secret key
 - `GOOGLE_API_KEY`: Google AI API key
+-  `AWS_ACCESS_KEY_ID`: AWS access key (OPTIONAL: if hosting on AWS)
+- `AWS_SECRET_ACCESS_KEY`: AWS secret key (OPTIONAL: if hosting on AWS)
 
 ## Usage
 
