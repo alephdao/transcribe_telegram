@@ -1,6 +1,6 @@
-# Transcribe Telegram
+# Audio Note Transcriber Telegram Bot
 
-A Telegram bot that transcribes voice messages and audio files using Google's Generative AI. It's free to run. I have it hosted on AWS EC2 but you could host it wherever you want. 
+A Telegram bot that transcribes voice messages and audio files using Google's Generative AI. It's free to run. I have it hosted on AWS EC2 so you'll see AWS setup in the code. You could host it wherever you want. 
 
 ## Features
 
