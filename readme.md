@@ -19,15 +19,15 @@ A Telegram bot that transcribes voice messages and audio files using AWS service
 ## Installation
 
 1. Clone the repository:
-
+```bash
 git clone https://github.com/alephdao/transcribe_telegram.git
 cd transcribe_telegram
-
+```
 
 2. Install dependencies:
-
+```bash
 pip install -r requirements.txt
-
+```
 
 3. Configure environment variables:
 Create a `.env` file with the following variables:
@@ -39,8 +39,9 @@ Create a `.env` file with the following variables:
 ## Usage
 
 1. Start the bot:
-
+```bash
 python main.py
+```
 
 2. Send a voice message or audio file to your bot on Telegram
 3. The bot will process the audio and return the transcription
@@ -56,7 +57,7 @@ python main.py
 
 ## License
 
-Free to use for personal or commercial use. However you feel like. 
+[License information pending]
 
 ## Contributing
 
