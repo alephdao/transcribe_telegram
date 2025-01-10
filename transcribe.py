@@ -1,14 +1,14 @@
 import os
 from telegram.ext import Application, MessageHandler, filters, CommandHandler
-import asyncio
 import google.generativeai as genai
 import aiohttp
 from dotenv import load_dotenv
 import logging
 from telegram import Update
 import base64
-import boto3
-from botocore.exceptions import ClientError
+from boto3 import client as boto3_client
+import gc
+from contextlib import contextmanager
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -21,7 +21,7 @@ def get_deployment_mode():
     """
     try:
         # First check if we can access AWS Parameter Store
-        ssm = boto3.client('ssm', region_name='us-east-1')
+        ssm = boto3_client('ssm', region_name='us-east-1')
         response = ssm.get_parameter(
             Name='transcribe_telegram_deployment_mode',
             WithDecryption=False
@@ -45,7 +45,7 @@ def get_aws_parameter(parameter_name):
         return None
         
     try:
-        ssm = boto3.client('ssm', region_name='us-east-1')
+        ssm = boto3_client('ssm', region_name='us-east-1')
         response = ssm.get_parameter(Name=parameter_name, WithDecryption=True)
         return response['Parameter']['Value']
     except Exception as e:
@@ -84,7 +84,20 @@ BOT_TOKEN, GOOGLE_AI_API_KEY = get_credentials()
 
 # Initialize Gemini
 genai.configure(api_key=GOOGLE_AI_API_KEY)
-model = genai.GenerativeModel('models/gemini-2.0-flash-exp')
+
+# Add a context manager for model handling
+@contextmanager
+def model_context():
+    """
+    Context manager to handle model initialization and cleanup
+    """
+    try:
+        model = genai.GenerativeModel('models/gemini-2.0-flash-exp')
+        yield model
+    finally:
+        # Cleanup
+        del model
+        gc.collect()
 
 TRANSCRIPTION_PROMPT = """Please transcribe this audio accurately in its original language. 
 If there are multiple speakers, identify and label them.
@@ -106,12 +119,10 @@ SUPPORTED_AUDIO_TYPES = {
 
 async def transcribe_audio(audio_data):
     """
-    Transcribe audio data using Gemini API
+    Transcribe audio data using Gemini API with proper cleanup
     """
     try:
-        # Convert audio data to base64
         audio_base64 = base64.b64encode(audio_data).decode('utf-8')
-        
         content_parts = [
             {"text": TRANSCRIPTION_PROMPT},
             {
@@ -122,13 +133,17 @@ async def transcribe_audio(audio_data):
             }
         ]
         
-        response = model.generate_content(content_parts)
-        transcript = f"# Transcription\n\n{response.text}"
-        return transcript
-        
+        with model_context() as current_model:
+            response = current_model.generate_content(content_parts)
+            transcript = f"# Transcription\n\n{response.text}"
+            return transcript
+            
     except Exception as e:
         logger.error(f"Error transcribing audio: {str(e)}")
         raise
+    finally:
+        # Force garbage collection
+        gc.collect()
 
 async def start(update, context):
     """
