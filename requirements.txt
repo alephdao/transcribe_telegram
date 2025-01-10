@@ -1,6 +1,5 @@
 python-telegram-bot
 python-dotenv
 google.generativeai
-boto3
 aiohttp
-telethon
+boto3.session
