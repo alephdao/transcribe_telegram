@@ -9,6 +9,7 @@ import base64
 from boto3 import client as boto3_client
 import gc
 from contextlib import contextmanager
+from google.generativeai.types import HarmCategory, HarmBlockThreshold
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -34,7 +35,6 @@ def get_deployment_mode():
         return 'local'
     
 DEPLOYMENT_MODE = get_deployment_mode()
-
 
 def get_aws_parameter(parameter_name):
     """
@@ -89,19 +89,31 @@ genai.configure(api_key=GOOGLE_AI_API_KEY)
 @contextmanager
 def model_context():
     """
-    Context manager to handle model initialization and cleanup
+    Context manager to handle model initialization and cleanup with safety settings
     """
     try:
-        model = genai.GenerativeModel('models/gemini-2.0-flash-exp')
+        model = genai.GenerativeModel('models/gemini-2.0-flash-exp', 
+            safety_settings={
+                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+                # These categories are defined in HarmCategory. The Gemini models only support HARM_CATEGORY_HARASSMENT, HARM_CATEGORY_HATE_SPEECH, HARM_CATEGORY_SEXUALLY_EXPLICIT, HARM_CATEGORY_DANGEROUS_CONTENT, 
+            }
+        )
         yield model
     finally:
         # Cleanup
         del model
         gc.collect()
 
-TRANSCRIPTION_PROMPT = """Please transcribe this audio accurately in its original language. 
-If there are multiple speakers, identify and label them.
-Format the output as a markdown document with speaker labels."""
+# Update the prompt to be more specific
+TRANSCRIPTION_PROMPT = """Transcribe this audio accurately in its original language.
+
+If there are multiple speakers, identify and label them as 'Speaker 1:', 'Speaker 2:', etc.
+
+Do not include any headers, titles, or additional text - only the transcription itself.
+
+When transcribing, add line breaks between different paragraphs or distinct segments of speech to improve readability."""
 
 # Supported audio MIME types
 SUPPORTED_AUDIO_TYPES = {
@@ -135,14 +147,50 @@ async def transcribe_audio(audio_data):
         
         with model_context() as current_model:
             response = current_model.generate_content(content_parts)
-            transcript = f"# Transcription\n\n{response.text}"
+            transcript = response.text
+            
+            # Log original transcript
+            logger.info("Original transcript from Gemini:")
+            logger.info("-" * 50)
+            logger.info(transcript)
+            logger.info("-" * 50)
+            
+            # Remove any variations of transcription headers
+            transcript = transcript.replace("# Transcription\n\n", "")
+            transcript = transcript.replace("Okay, here is the transcription:\n", "")
+            transcript = transcript.replace("Here's the transcription:\n", "")
+            transcript = transcript.strip()
+            
+            # Count actual speaker labels using a more precise pattern
+            speaker_labels = set()
+            for line in transcript.split('\n'):
+                if line.strip().startswith(('Speaker ', '**Speaker ')):
+                    for i in range(1, 10):
+                        if f"Speaker {i}:" in line or f"**Speaker {i}:**" in line:
+                            speaker_labels.add(i)
+            
+            # Log number of speakers detected
+            logger.info(f"Number of unique speakers detected: {len(speaker_labels)}")
+            logger.info(f"Speaker numbers found: {sorted(list(speaker_labels))}")
+            
+            # Only remove speaker labels if there's exactly one speaker
+            if len(speaker_labels) == 1:
+                transcript = transcript.replace("**Speaker 1:**", "")
+                transcript = transcript.replace("Speaker 1:", "")
+                transcript = transcript.strip()
+            
+            # Log cleaned transcript
+            logger.info("Cleaned transcript:")
+            logger.info("-" * 50)
+            logger.info(transcript)
+            logger.info("-" * 50)
+            
             return transcript
             
     except Exception as e:
         logger.error(f"Error transcribing audio: {str(e)}")
         raise
     finally:
-        # Force garbage collection
         gc.collect()
 
 async def start(update, context):
@@ -167,20 +215,32 @@ async def download_file(file):
         async with session.get(file_obj.file_path) as response:
             return await response.read()
 
-async def send_transcript_file(update, transcript):
+async def send_transcript(update, transcript):
     """
-    Save and send transcript as a markdown file using the original audio filename.
+    Send transcript either as a message or file depending on length.
+    Max Telegram message length is 4096 characters.
     """
-    import tempfile
-    
     # Handle both direct messages and callback queries
     message = update.message if update.message else update.callback_query.message
+    
+    # If transcript is short enough, send as regular message
+    if len(transcript) <= 4096:
+        # Escape special characters for MarkdownV2
+        escaped_transcript = transcript.replace('.', '\\.').replace('-', '\\-').replace('!', '\\!').replace('(', '\\(').replace(')', '\\)')
+        
+        await message.reply_text(
+            escaped_transcript,
+            parse_mode='MarkdownV2'
+        )
+        return
+        
+    # Otherwise, send as file
+    import tempfile
     
     # Get original filename from stored user data
     if hasattr(message, 'voice'):
         original_filename = f"voice_message_{message.date.strftime('%Y%m%d_%H%M%S')}"
     else:
-        # Remove file extension from original filename
         original_filename = os.path.splitext(message.audio.file_name)[0] if hasattr(message, 'audio') else "transcript"
     
     # Create temporary file
@@ -233,8 +293,8 @@ async def handle_audio(update, context):
             # Delete the processing message
             await processing_msg.delete()
             
-            # Send transcript
-            await send_transcript_file(update, transcript)
+            # Send transcript using the new function
+            await send_transcript(update, transcript)
             
         except Exception as e:
             logger.error(f"Error processing audio: {str(e)}", exc_info=True)
