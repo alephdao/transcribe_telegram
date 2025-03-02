@@ -1,6 +1,6 @@
 # Audio Note Transcriber Telegram Bot
 
-A Telegram bot that transcribes voice messages and audio files using Google's Generative AI. It's free to run. I have it hosted on AWS EC2 so you'll see AWS setup in the code. You could host it wherever you want. 
+A Telegram bot that transcribes voice messages and audio files using Google's Generative AI. It's free to run. You can host it on AWS EC2, Hetzner, or any other cloud provider using Docker.
 
 ## Features
 
@@ -17,12 +17,45 @@ A Telegram bot that transcribes voice messages and audio files using Google's Ge
 
 ## Prerequisites
 
-- Python 3.7+
-- AWS account with appropriate credentials
 - Telegram Bot Token
 - Google AI API credentials
+- Docker and Docker Compose (for Docker deployment)
+- Python 3.7+ (for local development)
 
 ## Installation
+
+### Option 1: Docker Deployment (Recommended)
+
+1. Clone the repository:
+```bash
+git clone https://github.com/alephdao/transcribe_telegram.git
+cd transcribe_telegram
+```
+
+2. Create an environment file:
+```bash
+cp .env.example .env
+```
+
+3. Edit the `.env` file with your credentials:
+```
+galebach_transcriber_bot_token=your_telegram_bot_token
+GOOGLE_AI_API_KEY=your_google_api_key
+# Add other variables as needed
+```
+
+4. Deploy using Docker:
+```bash
+./deploy.sh
+```
+
+This will:
+- Install Docker if it's not already installed
+- Build the Docker image
+- Start the container
+- Configure it to restart automatically
+
+### Option 2: Local Development
 
 1. Clone the repository:
 ```bash
@@ -35,25 +68,32 @@ cd transcribe_telegram
 pip install -r requirements.txt
 ```
 
-3. Create a Telegram bot
-
+3. Create a Telegram bot:
 - Open Telegram and search for "BotFather"
 - Send "/newbot" to BotFather
 - Follow the prompts to name your bot
 - BotFather will give you an API token - save this securely
 
 4. Configure environment variables:
-Create a `.env` file with the following variables:
-- `TELEGRAM_BOT_TOKEN`: Your Telegram bot token
-- `GOOGLE_API_KEY`: Google AI API key
-- `AWS_ACCESS_KEY_ID`: AWS access key (OPTIONAL: if hosting on AWS)
-- `AWS_SECRET_ACCESS_KEY`: AWS secret key (OPTIONAL: if hosting on AWS)
+Create a `.env` file with your credentials (use `.env.example` as a template)
 
 ## Usage
 
-1. Start the bot:
+### Docker Deployment
 ```bash
-python main.py
+# Start the bot
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop the bot
+docker-compose down
+```
+
+### Local Development
+```bash
+python transcribe.py
 ```
 
 2. Send a voice message or audio file to your bot on Telegram
@@ -66,7 +106,30 @@ python main.py
 - google.generativeai: Google AI integration
 - boto3: AWS SDK for Python
 - aiohttp: Async HTTP client/server
-- telethon: Telegram client library
+
+## Deployment Options
+
+### Hetzner Cloud (Recommended)
+
+1. Create a Hetzner Cloud account and create a new server (CX11 or CX21 is sufficient)
+2. Choose Ubuntu as the operating system
+3. Set up SSH keys for secure access
+4. SSH into your server:
+   ```bash
+   ssh root@your_server_ip
+   ```
+5. Clone the repository and follow the Docker deployment instructions above
+
+### AWS EC2
+
+1. Create an EC2 instance (t2.micro or t3.micro should be sufficient)
+2. Choose Ubuntu as the operating system
+3. Configure security groups to allow SSH access
+4. SSH into your instance:
+   ```bash
+   ssh -i your-key.pem ubuntu@your-instance-ip
+   ```
+5. Clone the repository and follow the Docker deployment instructions above
 
 ## License
 

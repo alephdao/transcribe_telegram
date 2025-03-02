@@ -1,0 +1,35 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+.env
+.mypy_cache/
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Archives
+*.zip
+*.tar.gz
+lambda_archive/
+archive/
+
+# Logs
+logs/
+*.log
+
+# Others
+.DS_Store
+memory_log.json
+README.md

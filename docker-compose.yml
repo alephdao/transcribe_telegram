@@ -1,0 +1,22 @@
+version: '3'
+
+services:
+  transcribe-bot:
+    build: .
+    restart: always
+    environment:
+      # These will be overridden by the .env file or environment variables at runtime
+      - galebach_transcriber_bot_token=${galebach_transcriber_bot_token}
+      - GOOGLE_AI_API_KEY=${GOOGLE_AI_API_KEY}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+    volumes:
+      # For persistent logs
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('https://api.telegram.org/bot' + open('.env').read().split('galebach_transcriber_bot_token=')[1].split('\\n')[0] + '/getMe')"]
+      interval: 1m
+      timeout: 10s
+      retries: 3
+      start_period: 30s
