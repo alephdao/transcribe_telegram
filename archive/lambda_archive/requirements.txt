@@ -1,0 +1,6 @@
+python-telegram-bot
+aiohttp
+deepgram-sdk
+python-dotenv
+requests
+google.generativeai
