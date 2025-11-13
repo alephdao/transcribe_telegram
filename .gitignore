@@ -1,2 +1,11 @@
 .env
 lambda
+**/__pycache__
+
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/.terraform.lock.hcl
+terraform/terraform.tfvars
+terraform/*.zip

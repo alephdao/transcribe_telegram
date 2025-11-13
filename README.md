@@ -2,6 +2,8 @@
 
 A Telegram bot that transcribes voice messages and audio files using Google's Generative AI. It's free to run. You can host it on AWS EC2, Hetzner, or any other cloud provider using Docker.
 
+I'm hosting it on gcp project phil-apps under account philip.galebach@gmail.com 
+
 ## Features
 
 - Transcribes voice messages and audio files sent to the bot in their original language. Eg, English audio returns English and Spanish audio returns Spanish. 
