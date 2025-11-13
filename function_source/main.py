@@ -104,6 +104,7 @@ async def transcribe_audio(audio_data):
         # Retry logic for rate limits (429 errors)
         max_retries = 3
         retry_delay = 2  # Start with 2 seconds
+        transcript = None
 
         for attempt in range(max_retries):
             try:
@@ -146,43 +147,47 @@ async def transcribe_audio(audio_data):
                 else:
                     raise
 
-            # Log original transcript
-            logger.info("Original transcript from Gemini:")
-            logger.info("-" * 50)
-            logger.info(transcript)
-            logger.info("-" * 50)
+        # Check if we got a transcript
+        if transcript is None:
+            raise Exception("Failed to get transcript from Gemini after all retries.")
 
-            # Remove any variations of transcription headers
-            transcript = transcript.replace("# Transcription\n\n", "")
-            transcript = transcript.replace("Okay, here is the transcription:\n", "")
-            transcript = transcript.replace("Here's the transcription:\n", "")
+        # Log original transcript
+        logger.info("Original transcript from Gemini:")
+        logger.info("-" * 50)
+        logger.info(transcript)
+        logger.info("-" * 50)
+
+        # Remove any variations of transcription headers
+        transcript = transcript.replace("# Transcription\n\n", "")
+        transcript = transcript.replace("Okay, here is the transcription:\n", "")
+        transcript = transcript.replace("Here's the transcription:\n", "")
+        transcript = transcript.strip()
+
+        # Count actual speaker labels using a more precise pattern
+        speaker_labels = set()
+        for line in transcript.split('\n'):
+            if line.strip().startswith(('Speaker ', '**Speaker ')):
+                for i in range(1, 10):
+                    if f"Speaker {i}:" in line or f"**Speaker {i}:**" in line:
+                        speaker_labels.add(i)
+
+        # Log number of speakers detected
+        logger.info(f"Number of unique speakers detected: {len(speaker_labels)}")
+        logger.info(f"Speaker numbers found: {sorted(list(speaker_labels))}")
+
+        # Only remove speaker labels if there's exactly one speaker
+        if len(speaker_labels) == 1:
+            transcript = transcript.replace("**Speaker 1:**", "")
+            transcript = transcript.replace("Speaker 1:", "")
             transcript = transcript.strip()
 
-            # Count actual speaker labels using a more precise pattern
-            speaker_labels = set()
-            for line in transcript.split('\n'):
-                if line.strip().startswith(('Speaker ', '**Speaker ')):
-                    for i in range(1, 10):
-                        if f"Speaker {i}:" in line or f"**Speaker {i}:**" in line:
-                            speaker_labels.add(i)
+        # Log cleaned transcript
+        logger.info("Cleaned transcript:")
+        logger.info("-" * 50)
+        logger.info(transcript)
+        logger.info("-" * 50)
 
-            # Log number of speakers detected
-            logger.info(f"Number of unique speakers detected: {len(speaker_labels)}")
-            logger.info(f"Speaker numbers found: {sorted(list(speaker_labels))}")
-
-            # Only remove speaker labels if there's exactly one speaker
-            if len(speaker_labels) == 1:
-                transcript = transcript.replace("**Speaker 1:**", "")
-                transcript = transcript.replace("Speaker 1:", "")
-                transcript = transcript.strip()
-
-            # Log cleaned transcript
-            logger.info("Cleaned transcript:")
-            logger.info("-" * 50)
-            logger.info(transcript)
-            logger.info("-" * 50)
-
-            return transcript
+        return transcript
 
     except Exception as e:
         logger.error(f"Error transcribing audio: {str(e)}")
