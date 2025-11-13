@@ -93,7 +93,7 @@ def model_context():
     Context manager to handle model initialization and cleanup with safety settings
     """
     try:
-        model = genai.GenerativeModel('models/gemini-2.0-flash-exp', 
+        model = genai.GenerativeModel('models/gemini-2.0-flash', 
             safety_settings={
                 HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
                 HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
