@@ -1,4 +1,5 @@
 import os
+import time
 from telegram.ext import Application, MessageHandler, filters, CommandHandler
 import google.generativeai as genai
 import aiohttp
@@ -132,7 +133,7 @@ SUPPORTED_AUDIO_TYPES = {
 
 async def transcribe_audio(audio_data):
     """
-    Transcribe audio data using Gemini API with proper cleanup
+    Transcribe audio data using Gemini API with retry logic for rate limits
     """
     try:
         audio_base64 = base64.b64encode(audio_data).decode('utf-8')
@@ -145,48 +146,94 @@ async def transcribe_audio(audio_data):
                 }
             }
         ]
-        
-        with model_context() as current_model:
-            response = current_model.generate_content(content_parts)
-            transcript = response.text
-            
-            # Log original transcript
-            logger.info("Original transcript from Gemini:")
-            logger.info("-" * 50)
-            logger.info(transcript)
-            logger.info("-" * 50)
-            
-            # Remove any variations of transcription headers
-            transcript = transcript.replace("# Transcription\n\n", "")
-            transcript = transcript.replace("Okay, here is the transcription:\n", "")
-            transcript = transcript.replace("Here's the transcription:\n", "")
+
+        # Retry logic for rate limits (429 errors)
+        max_retries = 3
+        retry_delay = 2  # Start with 2 seconds
+        transcript = None
+
+        for attempt in range(max_retries):
+            try:
+                with model_context() as current_model:
+                    response = current_model.generate_content(content_parts)
+
+                    # Check if response is valid
+                    if not response.candidates:
+                        logger.error("Gemini returned empty response - possible safety filter block")
+                        raise Exception("Audio could not be transcribed. The content may have been blocked by safety filters or the audio format is not supported.")
+
+                    # Check if response was blocked
+                    if hasattr(response, 'prompt_feedback') and response.prompt_feedback.block_reason:
+                        block_reason = response.prompt_feedback.block_reason
+                        logger.error(f"Content blocked by Gemini: {block_reason}")
+                        raise Exception(f"Content was blocked by safety filters: {block_reason}")
+
+                    transcript = response.text
+                    break  # Success, exit retry loop
+
+            except Exception as api_error:
+                error_str = str(api_error)
+
+                # Handle rate limits
+                if "429" in error_str or "Resource exhausted" in error_str:
+                    if attempt < max_retries - 1:
+                        logger.warning(f"Rate limit hit (attempt {attempt + 1}/{max_retries}), retrying in {retry_delay}s...")
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                        continue
+                    else:
+                        raise Exception("Gemini API rate limit exceeded. Please wait a moment and try again.")
+
+                # Handle empty response errors
+                elif "response.parts" in error_str or "candidates" in error_str:
+                    logger.error(f"Empty response from Gemini: {error_str}")
+                    raise Exception("Could not transcribe audio. The audio may be too short, corrupted, or in an unsupported format.")
+
+                # All other errors, re-raise
+                else:
+                    raise
+
+        # Check if we got a transcript
+        if transcript is None:
+            raise Exception("Failed to get transcript from Gemini after all retries.")
+
+        # Log original transcript
+        logger.info("Original transcript from Gemini:")
+        logger.info("-" * 50)
+        logger.info(transcript)
+        logger.info("-" * 50)
+
+        # Remove any variations of transcription headers
+        transcript = transcript.replace("# Transcription\n\n", "")
+        transcript = transcript.replace("Okay, here is the transcription:\n", "")
+        transcript = transcript.replace("Here's the transcription:\n", "")
+        transcript = transcript.strip()
+
+        # Count actual speaker labels using a more precise pattern
+        speaker_labels = set()
+        for line in transcript.split('\n'):
+            if line.strip().startswith(('Speaker ', '**Speaker ')):
+                for i in range(1, 10):
+                    if f"Speaker {i}:" in line or f"**Speaker {i}:**" in line:
+                        speaker_labels.add(i)
+
+        # Log number of speakers detected
+        logger.info(f"Number of unique speakers detected: {len(speaker_labels)}")
+        logger.info(f"Speaker numbers found: {sorted(list(speaker_labels))}")
+
+        # Only remove speaker labels if there's exactly one speaker
+        if len(speaker_labels) == 1:
+            transcript = transcript.replace("**Speaker 1:**", "")
+            transcript = transcript.replace("Speaker 1:", "")
             transcript = transcript.strip()
-            
-            # Count actual speaker labels using a more precise pattern
-            speaker_labels = set()
-            for line in transcript.split('\n'):
-                if line.strip().startswith(('Speaker ', '**Speaker ')):
-                    for i in range(1, 10):
-                        if f"Speaker {i}:" in line or f"**Speaker {i}:**" in line:
-                            speaker_labels.add(i)
-            
-            # Log number of speakers detected
-            logger.info(f"Number of unique speakers detected: {len(speaker_labels)}")
-            logger.info(f"Speaker numbers found: {sorted(list(speaker_labels))}")
-            
-            # Only remove speaker labels if there's exactly one speaker
-            if len(speaker_labels) == 1:
-                transcript = transcript.replace("**Speaker 1:**", "")
-                transcript = transcript.replace("Speaker 1:", "")
-                transcript = transcript.strip()
-            
-            # Log cleaned transcript
-            logger.info("Cleaned transcript:")
-            logger.info("-" * 50)
-            logger.info(transcript)
-            logger.info("-" * 50)
-            
-            return transcript
+
+        # Log cleaned transcript
+        logger.info("Cleaned transcript:")
+        logger.info("-" * 50)
+        logger.info(transcript)
+        logger.info("-" * 50)
+
+        return transcript
             
     except Exception as e:
         logger.error(f"Error transcribing audio: {str(e)}")

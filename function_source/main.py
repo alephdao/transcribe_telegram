@@ -4,11 +4,13 @@ import logging
 import base64
 import tempfile
 import asyncio
+import time
 from telegram import Update, Bot
 from telegram.ext import Application, MessageHandler, filters, CommandHandler
 import google.generativeai as genai
 import aiohttp
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
+from google.api_core import retry
 import gc
 from contextlib import contextmanager
 import functions_framework
@@ -85,7 +87,7 @@ SUPPORTED_AUDIO_TYPES = {
 
 async def transcribe_audio(audio_data):
     """
-    Transcribe audio data using Gemini API with proper cleanup
+    Transcribe audio data using Gemini API with retry logic for rate limits
     """
     try:
         audio_base64 = base64.b64encode(audio_data).decode('utf-8')
@@ -99,9 +101,50 @@ async def transcribe_audio(audio_data):
             }
         ]
 
-        with model_context() as current_model:
-            response = current_model.generate_content(content_parts)
-            transcript = response.text
+        # Retry logic for rate limits (429 errors)
+        max_retries = 3
+        retry_delay = 2  # Start with 2 seconds
+
+        for attempt in range(max_retries):
+            try:
+                with model_context() as current_model:
+                    response = current_model.generate_content(content_parts)
+
+                    # Check if response is valid
+                    if not response.candidates:
+                        logger.error("Gemini returned empty response - possible safety filter block")
+                        raise Exception("Audio could not be transcribed. The content may have been blocked by safety filters or the audio format is not supported.")
+
+                    # Check if response was blocked
+                    if hasattr(response, 'prompt_feedback') and response.prompt_feedback.block_reason:
+                        block_reason = response.prompt_feedback.block_reason
+                        logger.error(f"Content blocked by Gemini: {block_reason}")
+                        raise Exception(f"Content was blocked by safety filters: {block_reason}")
+
+                    transcript = response.text
+                    break  # Success, exit retry loop
+
+            except Exception as api_error:
+                error_str = str(api_error)
+
+                # Handle rate limits
+                if "429" in error_str or "Resource exhausted" in error_str:
+                    if attempt < max_retries - 1:
+                        logger.warning(f"Rate limit hit (attempt {attempt + 1}/{max_retries}), retrying in {retry_delay}s...")
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                        continue
+                    else:
+                        raise Exception("Gemini API rate limit exceeded. Please wait a moment and try again.")
+
+                # Handle empty response errors
+                elif "response.parts" in error_str or "candidates" in error_str:
+                    logger.error(f"Empty response from Gemini: {error_str}")
+                    raise Exception("Could not transcribe audio. The audio may be too short, corrupted, or in an unsupported format.")
+
+                # All other errors, re-raise
+                else:
+                    raise
 
             # Log original transcript
             logger.info("Original transcript from Gemini:")
